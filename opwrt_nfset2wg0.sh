@@ -1,11 +1,44 @@
 #!/bin/sh
 set -e
 
-WG_PRIVATE_KEY=''
-WG_PUBLIC_KEY=''
-WG_ENDPOINT=''
-WG_ENDPOINT_PORT=29008
-WG_ADDRESSES='192.168.111.9 fd08:5399:1111::9'
+CONFIG_FILE="$1"
+WG_ENDPOINT='wg.wuruxu.cn'
+WG_ENDPOINT_PORT=19008
+
+# 判断是否传入参数
+if [ -z "$CONFIG_FILE" ] || [ ! -f "$CONFIG_FILE" ]; then
+  echo "Usage: $0 path_of_wireguard.conf"
+  exit 1
+fi
+
+# 提取字段
+WG_PRIVATE_KEY=$(grep '^PrivateKey' "$CONFIG_FILE" | cut -d= -f2 | tr -d ' ')
+WG_ADDRESSES=$(grep '^Address' "$CONFIG_FILE" | cut -d= -f2 | tr -d ' ')
+DNS=$(grep '^DNS' "$CONFIG_FILE" | cut -d= -f2 | tr -d ' ')
+
+WG_PUBLIC_KEY=$(grep '^PublicKey' "$CONFIG_FILE" | cut -d= -f2 | tr -d ' ')
+ALLOWED_IPS=$(grep '^AllowedIPs' "$CONFIG_FILE" | cut -d= -f2 | tr -d ' ')
+ENDPOINT=$(grep '^Endpoint' "$CONFIG_FILE" | cut -d= -f2 | tr -d ' ')
+
+# 处理 Endpoint 拆分为 IP 和端口（支持 IPv6 和 IPv4）
+case "$ENDPOINT" in
+  \[*\]*:* )
+    # IPv6 格式：[addr]:port
+    WG_ENDPOINT=$(echo "$ENDPOINT" | sed -n 's/^\[\(.*\)\]:.*$/\1/p')
+    WG_ENDPOINT_PORT=$(echo "$ENDPOINT" | sed -n 's/^.*\]:\([0-9]*\)$/\1/p')
+    ;;
+  *:* )
+    # IPv4 格式：addr:port
+    WG_ENDPOINT=$(echo "$ENDPOINT" | cut -d: -f1)
+    WG_ENDPOINT_PORT=$(echo "$ENDPOINT" | cut -d: -f2)
+    ;;
+  * )
+    ENDPOINT_IP="UNKNOWN"
+    ENDPOINT_PORT="UNKNOWN"
+    echo "Wireguard config isn't valid, check it again"
+    exit 2
+    ;;
+esac
 
 NFT_FILE="/etc/nftables.d/20-mangle-wgset.nft"
 
