@@ -6,31 +6,44 @@ WG_ENDPOINT='wg.wuruxu.cn'
 WG_ENDPOINT_PORT=19008
 
 # 判断是否传入参数
-if [ -z "$CONFIG_FILE" ] || [ ! -f "$CONFIG_FILE" ]; then
-  echo "Usage: $0 path_of_wireguard.conf"
-  exit 1
+if [ -n "$1" ]; then
+  # 如果参数是文件路径
+  if [ -f "$1" ]; then
+    CONF_CONTENT=$(cat "$1")
+  else
+    echo "错误：文件 $1 不存在" >&2
+    exit 1
+  fi
+else
+  # 否则从 stdin 读取
+  echo "请输入 WireGuard 配置内容，然后按 Ctrl+D 结束输入：" >&2
+  CONF_CONTENT=$(cat)
 fi
 
-# 提取字段
-WG_PRIVATE_KEY=$(grep '^PrivateKey' "$CONFIG_FILE" | cut -d= -f2 | tr -d ' ')
-WG_ADDRESSES=$(grep '^Address' "$CONFIG_FILE" | cut -d= -f2 | tr -d ' ')
-DNS=$(grep '^DNS' "$CONFIG_FILE" | cut -d= -f2 | tr -d ' ')
+# 从内容中提取字段
+extract_field() {
+  echo "$CONF_CONTENT" | grep "^$1" | cut -d= -f2 | tr -d ' '
+}
 
-WG_PUBLIC_KEY=$(grep '^PublicKey' "$CONFIG_FILE" | cut -d= -f2 | tr -d ' ')
-ALLOWED_IPS=$(grep '^AllowedIPs' "$CONFIG_FILE" | cut -d= -f2 | tr -d ' ')
-ENDPOINT=$(grep '^Endpoint' "$CONFIG_FILE" | cut -d= -f2 | tr -d ' ')
+PRIVATE_KEY=$(extract_field "PrivateKey")
+ADDRESS=$(extract_field "Address")
+DNS=$(extract_field "DNS")
 
-# 处理 Endpoint 拆分为 IP 和端口（支持 IPv6 和 IPv4）
+PUBLIC_KEY=$(extract_field "PublicKey")
+ALLOWED_IPS=$(extract_field "AllowedIPs")
+ENDPOINT=$(extract_field "Endpoint")
+
+# 拆分 Endpoint 成 IP 和端口
 case "$ENDPOINT" in
   \[*\]*:* )
     # IPv6 格式：[addr]:port
-    WG_ENDPOINT=$(echo "$ENDPOINT" | sed -n 's/^\[\(.*\)\]:.*$/\1/p')
-    WG_ENDPOINT_PORT=$(echo "$ENDPOINT" | sed -n 's/^.*\]:\([0-9]*\)$/\1/p')
+    ENDPOINT_IP=$(echo "$ENDPOINT" | sed -n 's/^\[\(.*\)\]:.*$/\1/p')
+    ENDPOINT_PORT=$(echo "$ENDPOINT" | sed -n 's/^.*\]:\([0-9]*\)$/\1/p')
     ;;
   *:* )
     # IPv4 格式：addr:port
-    WG_ENDPOINT=$(echo "$ENDPOINT" | cut -d: -f1)
-    WG_ENDPOINT_PORT=$(echo "$ENDPOINT" | cut -d: -f2)
+    ENDPOINT_IP=$(echo "$ENDPOINT" | cut -d: -f1)
+    ENDPOINT_PORT=$(echo "$ENDPOINT" | cut -d: -f2)
     ;;
   * )
     ENDPOINT_IP="UNKNOWN"
